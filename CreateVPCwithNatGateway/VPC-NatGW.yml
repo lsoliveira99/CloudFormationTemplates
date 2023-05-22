@@ -1,0 +1,291 @@
+AWSTemplateFormatVersion: 2010-09-09
+# Este modelo do CloudFormation implanta uma VPC / Rede básica. 
+Parameters:
+  Position:
+    Type: String
+    Default: SE-BR
+    AllowedValues: [SE-BR, SE-MX, TS-PA, TS-BR]
+  Project:
+    Type: String
+    Default: PoC
+    AllowedValues: [PoC, Demo, Lab]
+  Case:
+    Type: String
+    AllowedPattern: ^[a-zA-Z0-9]*$
+    Description: "Use abreviation for define PoC Type, Example: C1NSVA, C1NSMS, C1WS, etc"
+  User:
+    Type: String
+    AllowedPattern: ^[a-zA-Z0-9]*$
+    Description: "Use only format first name and initial for surname, Example: For Joseph Smith use 'JosephS'"
+
+  NumberOfAZs:
+    Type: Number
+    AllowedValues:
+    - 1
+    - 2
+    - 3
+    Default: 1
+    Description:  How many Availability Zones do you wish to utilize?
+  
+  #InstanceType:
+  #  Type: String
+  #  Default: t3.micro
+  #  AllowedValues: [t3.micro, t3.small, t3.large]
+  #  Description: Enter t3.micro, t3.small or t3.large instance types. Default is t3.micro.
+#
+#
+Conditions:
+  BuildAZ2:         !Not [ !Equals [ !Ref NumberOfAZs, 1 ]] 
+  BuildAZ3:         !Equals [ !Ref NumberOfAZs, 3 ]
+#
+#
+Resources:
+ # Primeiro, um VPC:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+      - Key: Name
+        Value:  !Join ['-', ["VPC", !Ref "Project", !Ref "Position", !Ref "User", !Ref "Case" ]]
+      - Key: Owner
+        Value:  !Join ['-', [!Ref "Position", !Ref "User" ]]
+# Nosso VPC precisará de acesso à internet:     
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    DependsOn: VPC    
+# Observe como você não pode anexar um IGW a um VPC, a menos que ambos sejam criados: 
+  AttachGateway: 
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [ 0, !GetAZs ]    # Obtenha o primeiro AZ na lista      
+      Tags:
+      - Key: Name
+        Value: !Join ['-', ["SNet", !Ref "Project", !Ref "Position", !Ref "User", "SubnetPublic-A", !Ref "Case" ]]
+      - Key: Owner
+        Value: !Join ['-', [!Ref "Position", !Ref "User" ]]
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Condition: BuildAZ2
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [ 1, !GetAZs ]    # Obtenha o segundo AZ na lista
+      Tags:
+      - Key: Name
+        Value: !Join ['-', ["SNet", !Ref "Project", !Ref "Position", !Ref "User", "SubnetPublic-B", !Ref "Case" ]]
+      - Key: Owner
+        Value: !Join ['-', [!Ref "Position", !Ref "User" ]]
+  PublicSubnetC:
+    Type: AWS::EC2::Subnet
+    Condition: BuildAZ3
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.3.0/24
+      AvailabilityZone: !Select [ 2, !GetAZs ]    # Obtenha o terceiro AZ na lista
+      Tags:
+      - Key: Name
+        Value: !Join ['-', ["SNet", !Ref "Project", !Ref "Position", !Ref "User", "SubnetPublic-C", !Ref "Case" ]]
+      - Key: Owner
+        Value: !Join ['-', [!Ref "Position", !Ref "User" ]]
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.10.0/24
+      AvailabilityZone: !Select [ 0, !GetAZs ]    # Obtenha o primeiro AZ na lista
+      Tags:
+      - Key: Name
+        Value: !Join ['-', ["SNet", !Ref "Project", !Ref "Position", !Ref "User", "SubnetPrivate-A", !Ref "Case" ]]
+      - Key: Owner
+        Value: !Join ['-', [!Ref "Position", !Ref "User" ]]
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Condition: BuildAZ2
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.20.0/24
+      AvailabilityZone: !Select [ 1, !GetAZs ]    # Obtenha o segundo AZ na lista
+      Tags:
+      - Key: Name
+        Value: !Join ['-', ["SNet", !Ref "Project", !Ref "Position", !Ref "User", "SubnetPrivate-B", !Ref "Case" ]]
+      - Key: Owner
+        Value: !Join ['-', [!Ref "Position", !Ref "User" ]]
+  PrivateSubnetC:
+    Type: AWS::EC2::Subnet
+    Condition: BuildAZ3
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.30.0/24
+      AvailabilityZone: !Select [ 2, !GetAZs ]    # Obtenha o terceiro AZ na lista
+      Tags:
+      - Key: Name
+        Value: !Join ['-', ["SNet", !Ref "Project", !Ref "Position", !Ref "User", "SubnetPrivate-C", !Ref "Case" ]]
+      - Key: Owner
+        Value: !Join ['-', [!Ref "Position", !Ref "User" ]]
+# Algumas tabelas de rotas para nossas sub-redes:
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: !Join ['-', ["RT", !Ref "Project", !Ref "Position", !Ref "User", "Public", !Ref "Case" ]]
+      - Key: Owner
+        Value: !Join ['-', [!Ref "Position", !Ref "User" ]]
+  PublicRoute1:   # A tabela de rotas públicas têm roteamento direto para o IGW:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway  
+# Aqui está uma tabela de rotas privadas:
+  PrivateRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: !Join ['-', ["RT", !Ref "Project", !Ref "Position", !Ref "User", "Private-A", !Ref "Case" ]]
+      - Key: Owner
+        Value: !Join ['-', [!Ref "Position", !Ref "User" ]]
+  PrivateRoute1:           # A tabela de rota privada pode acessar a web via NAT (criada abaixo)
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      # Rotear o tráfego através do Gateway NAT:
+      NatGatewayId: !Ref NATGateway1
+# A NAT Gateway:
+  NATGateway1:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt ElasticIPAddress1.AllocationId
+      SubnetId: !Ref PublicSubnetA
+      Tags:
+      - Key: Name
+        Value: !Join ['-', ["NatGW", !Ref "Project", !Ref "Position", !Ref "User", "NATGateway-A", !Ref "Case" ]]
+      - Key: Owner
+        Value: !Join ['-', [!Ref "Position", !Ref "User" ]]
+  ElasticIPAddress1:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: VPC
+# Aqui está uma tabela de rotas privadas:
+  PrivateRouteTable2:
+    Type: AWS::EC2::RouteTable
+    Condition: BuildAZ2
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: !Join ['-', ["RT", !Ref "Project", !Ref "Position", !Ref "User", "Private-B", !Ref "Case" ]]
+      - Key: Owner
+        Value: !Join ['-', [!Ref "Position", !Ref "User" ]]
+  PrivateRoute2:           # A tabela de rota privada pode acessar a web via NAT (criada abaixo)
+    Type: AWS::EC2::Route
+    Condition: BuildAZ2
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      DestinationCidrBlock: 0.0.0.0/0
+      # Rotear o tráfego através do Gateway NAT:
+      NatGatewayId: !Ref NATGateway2
+# A NAT Gateway:
+  NATGateway2:
+    Type: AWS::EC2::NatGateway
+    Condition: BuildAZ2
+    Properties:
+      AllocationId: !GetAtt ElasticIPAddress2.AllocationId
+      SubnetId: !Ref PublicSubnetB
+      Tags:
+      - Key: Name
+        Value: !Join ['-', ["NatGW", !Ref "Project", !Ref "Position", !Ref "User", "NATGateway-B", !Ref "Case" ]]
+      - Key: Owner
+        Value: !Join ['-', [!Ref "Position", !Ref "User" ]]
+  ElasticIPAddress2:
+    Type: AWS::EC2::EIP
+    Condition: BuildAZ2
+    Properties:
+      Domain: VPC
+# Aqui está uma tabela de rotas privadas:
+  PrivateRouteTable3:
+    Type: AWS::EC2::RouteTable
+    Condition: BuildAZ3
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: !Join ['-', ["RT", !Ref "Project", !Ref "Position", !Ref "User", "Private-C", !Ref "Case" ]]
+      - Key: Owner
+        Value: !Join ['-', [!Ref "Position", !Ref "User" ]]
+  PrivateRoute3:           # A tabela de rota privada pode acessar a web via NAT (criada abaixo)
+    Type: AWS::EC2::Route
+    Condition: BuildAZ3
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable3
+      DestinationCidrBlock: 0.0.0.0/0
+      # Rotear o tráfego através do Gateway NAT:
+      NatGatewayId: !Ref NATGateway3
+# A NAT Gateway:
+  NATGateway3:
+    Type: AWS::EC2::NatGateway
+    Condition: BuildAZ3
+    Properties:
+      AllocationId: !GetAtt ElasticIPAddress3.AllocationId
+      SubnetId: !Ref PublicSubnetC
+      Tags:
+      - Key: Name
+        Value: !Join ['-', ["NatGW", !Ref "Project", !Ref "Position", !Ref "User", "NATGateway-C", !Ref "Case" ]]
+      - Key: Owner
+        Value: !Join ['-', [!Ref "Position", !Ref "User" ]]
+  ElasticIPAddress3:
+    Type: AWS::EC2::EIP
+    Condition: BuildAZ3
+    Properties:
+      Domain: VPC
+# Anexar as sub-redes públicas às tabelas de rotas públicas
+ # e anexar as sub-redes privadas às tabelas de rotas privadas:     
+  PublicSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+  PublicSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: BuildAZ2
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicRouteTable
+  PublicSubnetCRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: BuildAZ3
+    Properties:
+      SubnetId: !Ref PublicSubnetC
+      RouteTableId: !Ref PublicRouteTable    
+  PrivateSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetA
+      RouteTableId: !Ref PrivateRouteTable1
+  PrivateSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: BuildAZ2
+    Properties:
+      SubnetId: !Ref PrivateSubnetB
+      RouteTableId: !Ref PrivateRouteTable2
+  PrivateSubnetCRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: BuildAZ3
+    Properties:
+      SubnetId: !Ref PrivateSubnetC
+      RouteTableId: !Ref PrivateRouteTable3
